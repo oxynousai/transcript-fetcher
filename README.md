@@ -9,6 +9,22 @@ is undocumented, so Udemy can change it without notice.
 
 ## Install
 
+### Ubuntu: app icon in the dock
+
+```bash
+git clone https://github.com/oxynousai/transcript-fetcher
+cd transcript-fetcher
+./install-ubuntu.sh
+```
+
+This installs the app for your user only (in `~/.local/share/transcript-fetcher`, with its own
+Python environment), adds **Udemy Transcript Fetcher** to the app grid and pins it to the dock.
+It asks for your password only if `python3-tk` or `python3-venv` must be installed with apt.
+Afterwards the downloaded folder can be deleted. To update, run the script from a newer copy;
+to remove everything (including the saved token), run `./install-ubuntu.sh --uninstall`.
+
+### Other systems
+
 Requires Python 3.9+.
 
 ```bash
@@ -16,6 +32,9 @@ git clone https://github.com/oxynousai/transcript-fetcher
 cd transcript-fetcher
 pip install ".[impersonate]"
 ```
+
+On Linux distributions that block system-wide `pip install` ("externally-managed-environment"),
+create a virtual environment first (`python3 -m venv .venv && . .venv/bin/activate`).
 
 The desktop app uses Tkinter, which comes with Python from python.org on Windows and macOS.
 Elsewhere: `brew install python-tk` (Homebrew Python) or `sudo apt install python3-tk` (Debian/Ubuntu).

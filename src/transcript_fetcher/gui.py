@@ -16,6 +16,9 @@ from typing import Any, Optional
 from . import __version__
 from .app import Settings, check_link, run_job
 
+APP_ID = "transcript-fetcher"  # window class; must match StartupWMClass in install-ubuntu.sh
+ICON = Path(__file__).with_name("assets") / "icon.png"
+
 TOKEN_HELP = """Your access token lets the app read your purchased courses, the same way your browser does.
 
 1. Open udemy.com in Chrome, Edge or Firefox and log in.
@@ -237,7 +240,11 @@ def main() -> None:
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except (AttributeError, OSError):
             pass
-    root = tk.Tk()
+    root = tk.Tk(className=APP_ID)
+    try:
+        root.iconphoto(True, tk.PhotoImage(file=str(ICON)))
+    except tk.TclError:
+        pass  # the window still works without its icon
     App(root)
     root.title(f"Udemy Transcript Fetcher {__version__}")
     root.mainloop()

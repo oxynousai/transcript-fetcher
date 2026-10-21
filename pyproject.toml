@@ -23,5 +23,8 @@ transcript-fetcher-gui = "transcript_fetcher.gui:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+transcript_fetcher = ["assets/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
