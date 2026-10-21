@@ -14,6 +14,28 @@ log = logging.getLogger(__name__)
 Progress = Callable[[int, int, Lecture], None]
 
 
+def load_sections(client: UdemyClient, course: Course) -> list[Section]:
+    """The course's sections in order, keeping only video lectures (or ones with captions)."""
+    sections = build_sections(client.curriculum(course.id))
+    for section in sections:
+        section.lectures = [l for l in section.lectures if l.is_video or l.captions]
+    return [s for s in sections if s.lectures]
+
+
+def fetch_lecture(client: UdemyClient, course: Course, lecture: Lecture, lang: str = "en", any_lang: bool = False) -> None:
+    """Fill in ``lecture.cues``, or set ``lecture.note`` when there is no usable transcript.
+
+    Auth and Cloudflare errors propagate; any other error is recorded on the lecture.
+    """
+    try:
+        _fill_transcript(client, course, lecture, lang, any_lang)
+    except (AuthError, BlockedError):
+        raise
+    except (UdemyError, OSError, ValueError) as exc:
+        lecture.note = str(exc)
+        log.warning("Lecture %s (%s): %s", lecture.number, lecture.title, exc)
+
+
 def fetch_course(
     client: UdemyClient,
     course: Course,
@@ -21,27 +43,13 @@ def fetch_course(
     any_lang: bool = False,
     progress: Optional[Progress] = None,
 ) -> list[Section]:
-    """Return the course's sections with video lectures only, transcripts filled in.
-
-    Lectures without a usable caption keep empty ``cues`` and get a ``note``.
-    Auth and Cloudflare errors abort; other per-lecture errors are recorded and skipped.
-    """
-    sections = build_sections(client.curriculum(course.id))
-    for section in sections:
-        section.lectures = [l for l in section.lectures if l.is_video or l.captions]
-    sections = [s for s in sections if s.lectures]
-
+    """Return the course's video lectures by section, transcripts filled in."""
+    sections = load_sections(client, course)
     lectures = [l for s in sections for l in s.lectures]
     for i, lecture in enumerate(lectures, 1):
         if progress:
             progress(i, len(lectures), lecture)
-        try:
-            _fill_transcript(client, course, lecture, lang, any_lang)
-        except (AuthError, BlockedError):
-            raise
-        except (UdemyError, OSError, ValueError) as exc:
-            lecture.note = str(exc)
-            log.warning("Lecture %s (%s): %s", lecture.number, lecture.title, exc)
+        fetch_lecture(client, course, lecture, lang, any_lang)
     return sections
 
 

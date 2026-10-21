@@ -9,10 +9,9 @@ import os
 import sys
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
 
 from . import __version__
-from .client import AuthError, BlockedError, UdemyClient, UdemyError, parse_cookies
+from .client import AuthError, BlockedError, UdemyClient, UdemyError, domain_from_url, parse_cookies
 from .curriculum import Course, Lecture
 from .exporter import FORMATS, write_course
 from .fetcher import fetch_course
@@ -93,8 +92,7 @@ def make_client(args: argparse.Namespace) -> UdemyClient:
     domain = args.domain or os.environ.get("UDEMY_DOMAIN")
     if not domain:
         # A Udemy Business course URL tells us the portal host.
-        hosts = {urlparse(c).hostname for c in getattr(args, "courses", []) if "://" in c}
-        hosts = {h for h in hosts if h and h.endswith("udemy.com")}
+        hosts = {domain_from_url(c) for c in getattr(args, "courses", [])} - {None}
         domain = hosts.pop() if len(hosts) == 1 else "www.udemy.com"
     return UdemyClient(
         token=args.token or os.environ.get("UDEMY_ACCESS_TOKEN"),

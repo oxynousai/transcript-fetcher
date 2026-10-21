@@ -216,3 +216,9 @@ def slug_from_url(value: str) -> Optional[str]:
         if i + 1 < len(parts):
             return parts[i + 1]
     return None
+
+
+def domain_from_url(value: str) -> Optional[str]:
+    """The Udemy host of a course URL (``acme.udemy.com`` for Udemy Business), if any."""
+    host = urlparse(value.strip()).hostname if "://" in value else None
+    return host if host and (host == "udemy.com" or host.endswith(".udemy.com")) else None

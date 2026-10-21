@@ -17,6 +17,9 @@ dev = ["pytest>=7"]
 [project.scripts]
 transcript-fetcher = "transcript_fetcher.cli:main"
 
+[project.gui-scripts]
+transcript-fetcher-gui = "transcript_fetcher.gui:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

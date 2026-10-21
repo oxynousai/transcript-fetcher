@@ -1,7 +1,8 @@
 # transcript-fetcher
 
 Fetch the video transcripts of the Udemy courses you're enrolled in, in curriculum order
-(Section 1 → Lecture 1, 2, 3 … → Section 2 …), as one Markdown, text or JSON file per course.
+(Section 1 → Lecture 1, 2, 3 … → Section 2 …). Use the desktop app (paste a course link, get one
+`.txt` per video named after the video) or the command line.
 
 It uses the same internal API the udemy.com player uses to show its "Transcript" panel. That API
 is undocumented, so Udemy can change it without notice.
@@ -15,6 +16,9 @@ git clone https://github.com/oxynousai/transcript-fetcher
 cd transcript-fetcher
 pip install ".[impersonate]"
 ```
+
+The desktop app uses Tkinter, which comes with Python from python.org on Windows and macOS.
+Elsewhere: `brew install python-tk` (Homebrew Python) or `sudo apt install python3-tk` (Debian/Ubuntu).
 
 `[impersonate]` adds `curl_cffi`, which makes requests look like Chrome at the TLS level and is
 less likely to be stopped by Udemy's Cloudflare protection. Without it the tool falls back to
@@ -34,7 +38,38 @@ Treat the token like a password: it gives full access to your Udemy account. Pre
 environment variable over `--token` so it doesn't end up in your shell history. If you get an
 "Udemy rejected the request" error later, the token has expired; copy a fresh one.
 
-## Use
+## Desktop app
+
+```bash
+transcript-fetcher-gui
+```
+
+1. Paste the course link (any page of the course, e.g. `https://www.udemy.com/course/some-course/`).
+2. Paste your access token (the **How do I get it?** button shows the steps below).
+3. Choose where to save and press **Fetch transcripts**.
+
+You get a folder named after the course with one file per video, named after the video and
+numbered in course order so they sort correctly:
+
+```
+Udemy Transcripts/
+  Some Course/
+    001 - Welcome.txt
+    002 - Setting up your tools.txt
+    ...
+    Some Course (full course).txt       # optional: everything in one file
+```
+
+Each file starts with the video title and its section, followed by the transcript. Untick
+**Number files in course order** to name files with the video title only. Each file is saved as
+soon as it's fetched, so **Cancel** keeps what's already done. Videos without a transcript are
+listed in the window. Udemy Business links (`yourcompany.udemy.com`) work as is.
+
+"Remember on this computer" stores the token in a settings file only your user can read
+(`%APPDATA%\transcript-fetcher` on Windows, `~/Library/Application Support/transcript-fetcher` on
+macOS, `~/.config/transcript-fetcher` on Linux). Untick it on a shared computer.
+
+## Command line
 
 ```bash
 transcript-fetcher                     # list your courses and pick interactively (e.g. "1,3-5")

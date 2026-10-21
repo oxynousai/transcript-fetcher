@@ -13,12 +13,15 @@ from .curriculum import Course, Lecture, Section
 
 FORMATS = ("md", "txt", "json")
 _UNSAFE_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
 
 
 def safe_name(value: str, max_length: int = 100) -> str:
+    """A file name that is valid on Windows, macOS and Linux."""
     name = _UNSAFE_RE.sub("", value)
-    name = re.sub(r"\s+", " ", name).strip().rstrip(".")
-    return name[:max_length].rstrip() or "untitled"
+    name = re.sub(r"\s+", " ", name).strip()
+    name = name[:max_length].rstrip(" .") or "untitled"
+    return f"{name}_" if name.split(".")[0].upper() in _WINDOWS_RESERVED else name
 
 
 def section_heading(section: Section) -> str:
@@ -79,6 +82,28 @@ def render_json(course: Course, sections: list[Section], lang: str) -> str:
         ],
     }
     return json.dumps(data, ensure_ascii=False, indent=2)
+
+
+def lecture_filenames(sections: list[Section], numbered: bool = True) -> dict[int, str]:
+    """Map lecture id to ``"001 - Video title.txt"`` (or ``"Video title.txt"``), unique per folder."""
+    lectures = [l for s in sections for l in s.lectures]
+    width = max(3, len(str(max((l.number for l in lectures), default=0))))
+    names: dict[int, str] = {}
+    used: set[str] = set()
+    for lecture in lectures:
+        stem = safe_name(lecture.title)
+        if numbered:
+            stem = f"{lecture.number:0{width}d} - {stem}"
+        candidate, n = stem, 2
+        while candidate.lower() in used:  # Windows and macOS file names ignore case
+            candidate, n = f"{stem} ({n})", n + 1
+        used.add(candidate.lower())
+        names[lecture.id] = f"{candidate}.txt"
+    return names
+
+
+def lecture_file_text(section: Section, lecture: Lecture, timestamps: bool = False) -> str:
+    return f"{lecture.title}\n{section_heading(section)}\n\n{transcript_text(lecture.cues, timestamps)}\n"
 
 
 def write_course(
