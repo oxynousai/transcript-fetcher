@@ -55,8 +55,17 @@ def test_cancel_keeps_files_already_saved(tmp_path):
 def test_errors_become_events(tmp_path):
     events = run(tmp_path, routes={COURSES: FakeResponse(401, {"detail": "no"})})
     assert events[-1][0] == "error" and "rejected" in events[-1][1]
-    events = run(tmp_path, link="https://www.udemy.com/course/not-mine/")
-    assert events[-1][0] == "error" and "not one of your enrolled courses" in events[-1][1]
+    events = run(tmp_path, link="https://www.udemy.com/course/no-such-course/")
+    assert events[-1] == ("error", "There is no Udemy course at 'https://www.udemy.com/course/no-such-course/'. Check the link.")
+
+
+def test_subscription_course_outside_enrolled_list(tmp_path):
+    routes = make_routes()
+    routes["/api-2.0/courses/plan-course/"] = FakeResponse(
+        200, {"id": 42, "title": "Plan course", "url": "/course/plan-course/", "published_title": "plan-course"}
+    )
+    events = run(tmp_path, link="https://www.udemy.com/course/plan-course/", routes=routes)
+    assert events[-1] == ("done", tmp_path / "Plan course", 2, 3)
 
 
 def test_network_failure_is_reported_as_network_not_file_error(tmp_path, monkeypatch):

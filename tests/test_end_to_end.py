@@ -16,7 +16,7 @@ from transcript_fetcher.client import (
 from transcript_fetcher.exporter import write_course
 from transcript_fetcher.fetcher import fetch_course
 
-from fakes import BASE, COURSES, FakeResponse, FakeSession, make_routes, vtt
+from fakes import BASE, COURSES, CURRICULUM, FakeResponse, FakeSession, make_routes, vtt
 
 
 @pytest.fixture
@@ -28,8 +28,25 @@ def test_courses_paginate_and_resolve(client):
     assert [c.title for c in client.courses()] == ["Alpha course", "Zeta course"]
     assert client.find_course("https://www.udemy.com/course/alpha/learn/lecture/100#overview").id == 42
     assert client.find_course("7").slug == "zeta"
-    with pytest.raises(Exception, match="not one of your enrolled courses"):
+    with pytest.raises(UdemyError, match="There is no Udemy course at 'other'"):
         client.find_course("other")
+
+
+def test_courses_missing_from_the_enrolled_list_are_looked_up_directly(client):
+    # Udemy leaves subscription (Personal Plan) and archived courses out of the enrolled list.
+    client.session.routes["/api-2.0/courses/plan-course/"] = FakeResponse(
+        200, {"id": 42, "title": "Plan course", "url": "/course/plan-course/", "published_title": "plan-course"}
+    )
+    course = client.find_course("https://www.udemy.com/course/plan-course/learn/lecture/100")
+    assert (course.id, course.title, course.slug) == (42, "Plan course", "plan-course")
+    assert [l.number for s in fetch_course(client, course) for l in s.lectures] == [1, 3, 4]
+
+
+def test_no_access_to_course_is_explained(client):
+    client.session.routes[CURRICULUM] = FakeResponse(403, {"detail": "You do not have permission to perform this action."})
+    with pytest.raises(UdemyError, match="can't open this course's lectures") as info:
+        fetch_course(client, client.find_course("alpha"))
+    assert not isinstance(info.value, AuthError)  # not reported as a bad token
 
 
 def test_fetch_course_orders_and_selects_captions(client, tmp_path):

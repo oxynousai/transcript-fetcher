@@ -37,6 +37,8 @@ class FakeSession:
     def get(self, url, params=None, headers=None, timeout=None):
         self.calls.append((url, headers))
         key = url.replace(BASE, "")
+        if key not in self.routes:
+            return FakeResponse(404, {"detail": "Not found."})
         return self.routes[key]() if callable(self.routes[key]) else self.routes[key]
 
 

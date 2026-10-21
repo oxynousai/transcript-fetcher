@@ -9,7 +9,7 @@ import logging
 import time
 from pathlib import Path
 from typing import Any, Iterator, Optional
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from .curriculum import Course
 
@@ -44,6 +44,10 @@ class AuthError(UdemyError):
 
 
 class BlockedError(UdemyError):
+    pass
+
+
+class NotFoundError(UdemyError):
     pass
 
 
@@ -172,7 +176,7 @@ class UdemyClient:
                 "missing, expired or for a different domain (Udemy Business needs --domain)."
             )
         if response.status_code == 404:
-            raise UdemyError(f"Not found: {urlparse(url).path}")
+            raise NotFoundError(f"Not found: {urlparse(url).path}")
         raise UdemyError(f"Udemy API error HTTP {response.status_code} for {urlparse(url).path}")
 
     def paginate(self, path: str, params: dict[str, str]) -> Iterator[dict[str, Any]]:
@@ -191,32 +195,45 @@ class UdemyClient:
                 "/api-2.0/users/me/subscribed-courses/",
                 {"fields[course]": COURSE_FIELDS, "page_size": "100"},
             )
-            self._courses = sorted(
-                (
-                    Course(
-                        id=item["id"],
-                        title=item.get("title") or "",
-                        slug=item.get("published_title") or slug_from_url(item.get("url") or "") or str(item["id"]),
-                        url=self.base_url + (item.get("url") or ""),
-                    )
-                    for item in items
-                ),
-                key=lambda c: c.title.lower(),
-            )
+            self._courses = sorted((self._course(item) for item in items), key=lambda c: c.title.lower())
         return self._courses
 
+    def _course(self, item: dict[str, Any]) -> Course:
+        return Course(
+            id=item["id"],
+            title=item.get("title") or "",
+            slug=item.get("published_title") or slug_from_url(item.get("url") or "") or str(item["id"]),
+            url=self.base_url + (item.get("url") or ""),
+        )
+
     def find_course(self, ref: str) -> Course:
-        """Resolve a course id, slug or URL against the enrolled courses."""
+        """Resolve a course id, slug or URL, preferring the enrolled courses.
+
+        Udemy leaves subscription (Personal Plan) and archived courses out of the
+        enrolled list, so other courses are looked up directly; whether the account
+        can open them is checked when the curriculum is loaded.
+        """
         ref = ref.strip()
         slug = slug_from_url(ref) or ref.strip("/")
         for course in self.courses():
             if str(course.id) == slug or course.slug == slug:
                 return course
-        raise UdemyError(f"'{ref}' is not one of your enrolled courses on {self.domain}. Run 'transcript-fetcher list'.")
+        try:
+            item = self.get_json(f"/api-2.0/courses/{quote(slug, safe='')}/", {"fields[course]": COURSE_FIELDS})
+        except NotFoundError:
+            raise UdemyError(f"There is no Udemy course at '{ref}'. Check the link.") from None
+        return self._course(item)
 
     def curriculum(self, course_id: int) -> Iterator[dict[str, Any]]:
         """Curriculum items (chapters, lectures, quizzes...) in course order."""
-        return self.paginate(f"/api-2.0/courses/{course_id}/subscriber-curriculum-items/", CURRICULUM_PARAMS)
+        try:
+            yield from self.paginate(f"/api-2.0/courses/{course_id}/subscriber-curriculum-items/", CURRICULUM_PARAMS)
+        except AuthError:
+            # The token was just accepted for the course list, so this is about the course.
+            raise UdemyError(
+                "Your Udemy account can't open this course's lectures. Check that you are enrolled "
+                "(or that it is included in your Udemy subscription) with the account the token came from."
+            ) from None
 
     def lecture_captions(self, course_id: int, lecture_id: int) -> list[dict[str, Any]]:
         data = self.get_json(
