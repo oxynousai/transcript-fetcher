@@ -3,7 +3,16 @@ import json
 import pytest
 
 from transcript_fetcher import cli
-from transcript_fetcher.client import AuthError, BlockedError, UdemyClient, parse_cookies, slug_from_url
+from transcript_fetcher.client import (
+    NETWORK_RETRIES,
+    AuthError,
+    BlockedError,
+    UdemyClient,
+    UdemyError,
+    parse_cookies,
+    request_timeout,
+    slug_from_url,
+)
 from transcript_fetcher.exporter import write_course
 from transcript_fetcher.fetcher import fetch_course
 
@@ -122,3 +131,43 @@ def test_cli_fetch_infers_business_domain(monkeypatch, tmp_path):
     monkeypatch.delenv("UDEMY_DOMAIN", raising=False)
     assert cli.main(["https://acme.udemy.com/course/py-101/", "-o", str(tmp_path)]) == 0
     assert seen["domain"] == "acme.udemy.com"
+
+
+class CurlTimeout(OSError):
+    """Stands in for curl_cffi's Timeout, which subclasses OSError like requests' errors."""
+
+
+def test_network_errors_are_retried_then_reported(monkeypatch):
+    monkeypatch.setattr("transcript_fetcher.client.time.sleep", lambda s: None)
+    outcomes = iter([CurlTimeout("timed out"), FakeResponse(200, {"results": [], "next": None})])
+
+    def flaky():
+        outcome = next(outcomes)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    assert UdemyClient(token="t", session=FakeSession({COURSES: flaky}), delay=0).courses() == []
+
+    attempts = []
+
+    def always_slow():
+        attempts.append(1)
+        raise CurlTimeout(
+            "Failed to perform, curl: (28) Operation timed out after 30001 milliseconds with 130507 bytes received. "
+            "See https://curl.se/libcurl/c/libcurl-errors.html first for more details."
+        )
+
+    client = UdemyClient(token="t", session=FakeSession({COURSES: always_slow}), delay=0)
+    with pytest.raises(UdemyError, match="^Udemy took too long to respond"):
+        client.courses()
+    assert len(attempts) == NETWORK_RETRIES + 1
+
+
+def test_request_timeout_allows_slow_but_steady_transfers():
+    import requests
+
+    assert request_timeout(requests.Session()) == (15, 60)
+    curl = pytest.importorskip("curl_cffi.requests")
+    connect, read = request_timeout(curl.Session(impersonate="chrome"))
+    assert connect + read >= 300  # curl_cffi caps the whole transfer, not the silence between bytes

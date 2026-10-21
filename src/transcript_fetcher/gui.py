@@ -161,7 +161,8 @@ class App:
             pass  # remembering settings is a convenience, not a requirement
         self.cancel.clear()
         self.folder = None
-        self.progress.configure(value=0, maximum=1)
+        self.progress.configure(mode="indeterminate", value=0)
+        self.progress.start(15)  # until the lecture count is known
         self._set_running(True)
         self.worker = threading.Thread(
             target=run_job,
@@ -200,6 +201,7 @@ class App:
         elif kind == "log":
             self._append_log(event[1])
         elif kind == "progress":
+            self._stop_spinner()
             self.progress.configure(value=event[1], maximum=max(event[2], 1))
         elif kind in ("done", "cancelled"):
             folder, saved, total = event[1:]
@@ -210,14 +212,22 @@ class App:
                 message = f"Done. Saved {saved} of {total} video transcripts to {folder}"
                 if saved < total:
                     message += f" ({total - saved} had no transcript, see the list below)"
+            self._stop_spinner()
             self.status.set(message)
             self._append_log(message)
             self._set_running(False)
         elif kind == "error":
+            self._stop_spinner()
+            self.progress.configure(value=0)
             self.status.set("Failed: " + event[1])
             self._append_log("Error: " + event[1])
             self._set_running(False)
             messagebox.showerror("Could not fetch transcripts", event[1], parent=self.root)
+
+    def _stop_spinner(self) -> None:
+        if str(self.progress["mode"]) == "indeterminate":
+            self.progress.stop()
+            self.progress.configure(mode="determinate", value=0)
 
     def open_folder(self) -> None:
         if not self.folder:

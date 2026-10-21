@@ -34,11 +34,13 @@ def test_fetch_from_the_window(root, tmp_path):
     app.output_dir.set(str(tmp_path / "out"))
     app.start()
     assert str(app.fetch_button["state"]) == "disabled"
+    assert str(app.progress["mode"]) == "indeterminate"  # moving while the lecture list loads
 
     pump(root, lambda: app.status.get().startswith("Done"))
     assert app.status.get().startswith("Done. Saved 2 of 3 video transcripts")
     assert (tmp_path / "out" / "Alpha course" / "001 - Welcome.txt").exists()
     assert str(app.open_button["state"]) == "normal"
+    assert str(app.progress["mode"]) == "determinate" and app.progress["value"] == app.progress["maximum"]
     assert str(app.fetch_button["state"]) == "normal"
     assert "Saved    003 - Setup.txt" in app.log.get("1.0", "end")
     assert (tmp_path / "settings.json").exists()

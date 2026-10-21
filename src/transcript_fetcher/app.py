@@ -104,6 +104,8 @@ def run_job(
         client = make_client(link, settings.token, session, delay)
         emit(("status", "Looking for the course in your purchased courses..."))
         course = client.find_course(link)
+        emit(("log", f"Found '{course.title}' in your courses."))
+        emit(("log", "Loading the lecture list (a big course can take a minute)..."))
         emit(("status", f"Loading the lecture list of '{course.title}'..."))
         sections = load_sections(client, course)
         lectures = [(s, l) for s in sections for l in s.lectures]

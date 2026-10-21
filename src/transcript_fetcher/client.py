@@ -17,7 +17,7 @@ log = logging.getLogger(__name__)
 
 COURSE_FIELDS = "id,title,url,published_title"
 CURRICULUM_PARAMS = {
-    "page_size": "200",
+    "page_size": "100",
     "fields[chapter]": "title,object_index",
     "fields[lecture]": "title,object_index,asset",
     "fields[quiz]": "title,object_index",
@@ -27,6 +27,12 @@ CURRICULUM_PARAMS = {
 }
 RETRY_STATUSES = {429, 500, 502, 503, 504}
 MAX_RETRIES = 4
+NETWORK_RETRIES = 2
+# (connect, read) seconds. requests treats "read" as the longest silence between bytes,
+# but curl_cffi caps the whole transfer at connect + read, so it needs room for slow but
+# steady responses such as a big course's lecture list.
+REQUESTS_TIMEOUT = (15, 60)
+CURL_TIMEOUT = (15, 285)
 
 
 class UdemyError(Exception):
@@ -61,6 +67,17 @@ def parse_cookies(value: str) -> dict[str, str]:
         if sep and name:
             cookies[name.strip()] = val.strip().strip('"')
     return cookies
+
+
+def request_timeout(session: Any) -> tuple[float, float]:
+    return CURL_TIMEOUT if type(session).__module__.startswith("curl_cffi") else REQUESTS_TIMEOUT
+
+
+def describe_network_error(exc: OSError) -> str:
+    text = str(exc).split(" See https://curl.se")[0].strip()
+    if "timed out" in text.lower() or "timeout" in type(exc).__name__.lower():
+        return "Udemy took too long to respond. Check your internet connection and try again."
+    return f"Could not reach Udemy: {text[:200]}"
 
 
 def make_session(impersonate: bool = True) -> Any:
@@ -100,6 +117,7 @@ class UdemyClient:
         self.base_url = f"https://{domain}"
         self.delay = delay
         self.session = session if session is not None else make_session(impersonate)
+        self._timeout = request_timeout(self.session)
         for name, value in cookies.items():
             self.session.cookies.set(name, value, domain=domain)
         # Sent only to the API, never to the caption CDN.
@@ -120,7 +138,15 @@ class UdemyClient:
     def _get(self, url: str, params: Optional[dict[str, str]] = None, headers: Optional[dict[str, str]] = None) -> Any:
         for attempt in range(MAX_RETRIES + 1):
             self._throttle()
-            response = self.session.get(url, params=params, headers=headers, timeout=30)
+            try:
+                response = self.session.get(url, params=params, headers=headers, timeout=self._timeout)
+            except OSError as exc:  # network errors of both requests and curl_cffi subclass OSError
+                if attempt >= NETWORK_RETRIES:
+                    raise UdemyError(describe_network_error(exc)) from exc
+                wait = 2.0 * 2**attempt
+                log.info("%s for %s, retrying in %.0fs", type(exc).__name__, urlparse(url).path, wait)
+                time.sleep(wait)
+                continue
             if response.status_code not in RETRY_STATUSES or attempt == MAX_RETRIES:
                 return response
             retry_after = response.headers.get("Retry-After", "")

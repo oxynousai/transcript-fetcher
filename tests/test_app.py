@@ -7,7 +7,7 @@ from transcript_fetcher.app import Settings, check_link, make_client, run_job
 from transcript_fetcher.curriculum import Lecture, Section
 from transcript_fetcher.exporter import lecture_filenames, safe_name
 
-from fakes import COURSES, FakeResponse, FakeSession, make_routes
+from fakes import COURSES, CURRICULUM, FakeResponse, FakeSession, make_routes
 
 LINK = "https://www.udemy.com/course/alpha/learn/lecture/100#overview"
 
@@ -57,6 +57,19 @@ def test_errors_become_events(tmp_path):
     assert events[-1][0] == "error" and "rejected" in events[-1][1]
     events = run(tmp_path, link="https://www.udemy.com/course/not-mine/")
     assert events[-1][0] == "error" and "not one of your enrolled courses" in events[-1][1]
+
+
+def test_network_failure_is_reported_as_network_not_file_error(tmp_path, monkeypatch):
+    monkeypatch.setattr("transcript_fetcher.client.time.sleep", lambda s: None)
+    routes = make_routes()
+
+    def slow():
+        raise OSError("Operation timed out after 30001 milliseconds")
+
+    routes[CURRICULUM] = slow
+    events = run(tmp_path, routes=routes)
+    assert ("log", "Found 'Alpha course' in your courses.") in events
+    assert events[-1] == ("error", "Udemy took too long to respond. Check your internet connection and try again.")
 
 
 def test_make_client_accepts_token_or_cookie_string():
